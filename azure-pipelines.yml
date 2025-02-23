@@ -1,0 +1,65 @@
+trigger:
+- main
+
+pool:
+  name: MyDebianPool
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    steps:
+    - task: UseNode@1
+      inputs:
+        version: '18.x'
+
+    - script: npm install
+      displayName: 'Install dependencies'
+
+    - script: npm install --save-dev webpack-cli
+      displayName: 'Install webpack-cli'
+
+    - script: npx webpack --version
+      displayName: 'Check Webpack Version'
+
+    - script: npm run build --if-present
+      displayName: 'Build the project'
+
+    - script: ls -R $(Build.SourcesDirectory)
+      displayName: 'List Build Sources Directory'
+
+    - task: CopyFiles@2
+      inputs:
+        SourceFolder: 'dist' # Replace with the correct folder
+        Contents: '**'
+        TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+
+- stage: Deploy
+  dependsOn: Build
+  jobs:
+  - deployment: DeployToAzure
+    environment: 'Production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'drop'
+              downloadPath: '$(Pipeline.Workspace)'
+
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'shomenniuk-connect'
+              appType: 'webAppLinux'
+              appName: 'MySimpleWebApp'
+              package: '$(Pipeline.Workspace)/drop'
+              
